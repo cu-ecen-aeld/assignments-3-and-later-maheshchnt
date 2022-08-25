@@ -1,6 +1,6 @@
 #!/bin/sh
 # Tester script for assignment 1 and assignment 2
-# Author: Siddhant Jajoo
+# Author: Mahesh Gudipati
 
 set -e
 set -u
@@ -38,6 +38,7 @@ if [ -d "$WRITEDIR" ]
 then
 	echo "$WRITEDIR created"
 else
+	echo "unable to create "$WRITEDIR" dir"
 	exit 1
 fi
 
