@@ -23,4 +23,4 @@ fi
 # check the total files recursively and matching lines
 echo "The number of files are $(find $filesdir -type f | wc -l ) and the number of matching lines are $( grep -r $searchstr $filesdir | wc -l )"
 echo ""
-
+exit 0

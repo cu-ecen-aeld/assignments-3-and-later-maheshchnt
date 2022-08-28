@@ -38,7 +38,7 @@ fi
  #write the string into file. Overwrite if the file already exist with some contents..
         echo "$writestr" > $writefile
 	echo "written--"$writestr"--string into--"$writefile"--file"
-
+        exit 0
 
 
 
