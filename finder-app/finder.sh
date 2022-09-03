@@ -1,4 +1,5 @@
 #!/bin/sh
+set -e
 # Tester script for assignment 1 and assignment 2
 # Author: Mahesh Gudipati
 
