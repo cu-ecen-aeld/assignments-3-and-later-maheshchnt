@@ -1,7 +1,27 @@
+/***********************************************************************
+ * @file      writer.c
+ * @version   0.1
+ * @brief     writer function implementation file.
+ *
+ * @author    Mahesh Gudipati, magu6520@Colorado.edu
+ * @date      Sep 03, 2022
+ *
+ * @institution University of Colorado Boulder (UCB)
+ * @course      ECEN 57133-001: Advanced Embedded Software Dev
+ * @instructor  Daniel Walkes
+ *
+ * @assignment Assignment 2 - Cross compiler setup
+ * @due        
+ *
+ * @resources  
+ *
+ */
 #include <stdio.h>
 #include <syslog.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <string.h>
+#include <unistd.h>
 
 int main(int argc, char *argv[])
 {
