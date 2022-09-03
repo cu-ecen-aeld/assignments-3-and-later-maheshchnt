@@ -44,7 +44,7 @@ int main(int argc, char *argv[])
 		  argc, argc>=1?argv[0]:NULL, argc>=2?argv[1]:NULL, argc>=3?argv[2]:NULL);
        printf("\n Usage: ./writer [filename] [writestring]");
        printf("\n Writes the given string into the specified files");
-       return -1;
+       return 1;
     }
 
     openlog(NULL, 0, LOG_USER);
