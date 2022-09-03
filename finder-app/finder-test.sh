@@ -11,17 +11,15 @@ WRITESTR=AELD_IS_FUN
 WRITEDIR=/tmp/aeld-data
 username=$(cat conf/username.txt)
 
-#clear the artifacts and compile the writer.c file
-#if [$make -eq 0]
-#then
-#if ["make" -eq 0]
-#then 
-#	echo "Successfully compailed the code"
-#else
-#	echo "Compilation unsuccessfull"
-#	exit 1
-#fi
-#fi
+#clear the artifacts and invoke the make to compile the writer.c file
+make clean
+make
+if [ $? -eq 0 ]; then
+	echo "compilation successfull"
+else
+	echo "Failed to compile the image"
+	exit 1
+fi
 
 if [ $# -lt 2 ]
 then
