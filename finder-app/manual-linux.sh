@@ -86,8 +86,8 @@ ${CROSS_COMPILE}readelf -a bin/busybox | grep "Shared library"
 
 echo "Copying required library modules to rootfs"
 # Add library dependencies to rootfs
-cp -r /home/mgudipati/COURSE/AESD/ARM_TOOL_CHAIN/gcc-arm-10.2-2020.11-x86_64-aarch64-none-linux-gnu/aarch64-none-linux-gnu/libc/lib .
-cp -r /home/mgudipati/COURSE/AESD/ARM_TOOL_CHAIN/gcc-arm-10.2-2020.11-x86_64-aarch64-none-linux-gnu/aarch64-none-linux-gnu/libc/lib64 .
+cp -r $CUR_DIR/libs/lib .
+cp -r $CUR_DIR/libs/lib64 .
 
 echo "Creating device nodes"
 # Make device nodes
