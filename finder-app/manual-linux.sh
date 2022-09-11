@@ -105,6 +105,7 @@ echo "copying program files and scripts to home (rootfs)"
 cp -r writer ${OUTDIR}/rootfs/home 
 cp -r finder.sh ${OUTDIR}/rootfs/home 
 cp -r finder-test.sh ${OUTDIR}/rootfs/home 
+cp -r autorun-qemu.sh ${OUTDIR}/rootfs/home
 mkdir -p ${OUTDIR}/rootfs/home/conf
 cp -r ../conf/username.txt ${OUTDIR}/rootfs/home/conf
 echo "Adding the Image in outdir"
