@@ -12,6 +12,7 @@ BUSYBOX_VERSION=1_33_1
 FINDER_APP_DIR=$(realpath $(dirname $0))
 ARCH=arm64
 CROSS_COMPILE=aarch64-none-linux-gnu-
+CUR_DIR=$PWD
 
 if [ $# -lt 1 ]
 then
@@ -94,7 +95,7 @@ sudo mknod -m 666 dev/null c 1 3
 sudo mknod -m 600 dev/console c 5 1
 
 # Clean and build the writer utility
-cd /home/mgudipati/COURSE/AESD/ASSIGNMENT_3/assignment-2-maheshchnt/finder-app
+cd $CUR_DIR
 make clean
 make CROSS_COMPILE=${CROSS_COMPILE}
 
@@ -108,7 +109,7 @@ cp -r autorun-qemu.sh ${OUTDIR}/rootfs/home
 mkdir -p ${OUTDIR}/rootfs/home/conf
 cp -r ../conf/username.txt ${OUTDIR}/rootfs/home/conf
 echo "Adding the Image in outdir"
-cp -r /home/mgudipati/COURSE/AESD/LINUX/linux-stable/arch/arm64/boot/Image ${OUTDIR}
+cp -r ${OUTDIR}/linux-stable/arch/arm64/boot/Image ${OUTDIR}
 
 # Chown the root directory
 cd ${OUTDIR}/rootfs
