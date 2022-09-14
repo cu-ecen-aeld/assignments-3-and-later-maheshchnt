@@ -12,8 +12,8 @@ WRITEDIR=/tmp/aeld-data
 username=$(cat conf/username.txt)
 
 #clear the artifacts and invoke the make to compile the writer.c file
-make clean
-make
+#make clean
+#make
 if [ $? -eq 0 ]; then
 	echo "compilation successfull"
 else
