@@ -9,6 +9,7 @@ set -u
 NUMFILES=10
 WRITESTR=AELD_IS_FUN
 WRITEDIR=/tmp/aeld-data
+FINDER_OUTPUT_FILE=/tmp/assignment4-result.txt
 username=$(cat conf/username.txt)
 
 #clear the artifacts and invoke the make to compile the writer.c file
@@ -59,10 +60,13 @@ fi
 
 for i in $( seq 1 $NUMFILES)
 do
-	./writer "$WRITEDIR/${username}$i.txt" "$WRITESTR"
+	writer "$WRITEDIR/${username}$i.txt" "$WRITESTR"
 done
 
-OUTPUTSTRING=$(./finder.sh "$WRITEDIR" "$WRITESTR")
+OUTPUTSTRING=$(finder.sh "$WRITEDIR" "$WRITESTR")
+
+#write the output search string into finder output file
+echo "${OUTPUTSTRING}"  > "${FINDER_OUTPUT_FILE}"
 
 set +e
 echo ${OUTPUTSTRING} | grep "${MATCHSTR}"
