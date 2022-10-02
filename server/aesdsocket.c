@@ -10,7 +10,7 @@
 #include <syslog.h>
 #include <sys/stat.h>
 #include <fcntl.h>
-
+#include <signal.h>
 
 #define MAX_BUF_SIZE         (1024)
 #define PORT                 (9000)
@@ -48,14 +48,14 @@ int process_packet(int connfd, int len)
    if (write_bytes != len) {
       syslog(LOG_ERR, "Failed to write %s to %s. Errno:%d", buff, "/var/tmp/aesdsocketdata", file_err);
    } else {
-      syslog(LOG_DEBUG, "Writing %s to %s len:%d fd:%d", buff, "/var/tmp/aesdsocketdata", len, fd);
+      //syslog(LOG_DEBUG, "Writing %s to %s len:%d fd:%d", buff, "/var/tmp/aesdsocketdata", len, fd);
    }
 
    //send data in 1024 chunks
    lseek (fd, 0, SEEK_SET);
  
    while ((read_bytes = read(fd, write_back_pkt, MAX_BUF_SIZE))) {
-      syslog(LOG_ERR, "send the %s back to client. len:%d", write_back_pkt, read_bytes);
+      //syslog(LOG_ERR, "send the %s back to client. len:%d", write_back_pkt, read_bytes);
       if (write(connfd, write_back_pkt, read_bytes) != read_bytes) {
 	  syslog(LOG_ERR, "Failed to send pkts back to client");
 	  return -1;
@@ -66,7 +66,7 @@ int process_packet(int connfd, int len)
 }
 
 // Function designed for chat between client and server.
-void func(int connfd)
+void process_client_connection(int connfd)
 {
     int  n = 0, len = 0;
 
@@ -77,7 +77,6 @@ void func(int connfd)
     // read the message from client and copy it in buffer
     while (read(connfd, &buff[len], MAX_BUF_SIZE) != 0) {
       
-	       //printf("\n received %s\n", buff);	
 	// copy server message into buffer
         for (n = 0; n < MAX_BUF_SIZE; n++) {
             if (buff[len++] == '\n') {
@@ -97,20 +96,36 @@ cleanup:
     free(buff);
 }
 
-
+//flag to enable/disable
 int run_connections = 1;
+
+void sig_handler(int signo)
+{
+  if ((signo == SIGTERM) || (signo == SIGINT)) {
+     run_connections = 0;
+     syslog(LOG_INFO,"Caught signal, exitin\n");
+  }
+}
 
 // Driver function
 int main(int argc, char *argv[])
 {
 
     int file_err = -1;
-	printf("\n NUMBE OF ARGUMENTS ARE %d", argc);
+    printf("\n NUMBE OF ARGUMENTS ARE %d", argc);
 
+    pid_t pid = 0;
     int sockfd, connfd, len;
-	int option_value = 1;
+    int option_value = 1;
+    int dont_fork = 1;   //dont fork the process unless -d option is specified
     struct sockaddr_in servaddr, cli;
- 
+
+    if (argc == 2) {
+	dont_fork = strcmp(argv[1], "-d");
+    } else if (argc > 2) {
+	printf("\n Invalid number of arguments:%d", argc);
+    }
+
     // open the file. If it doesn't exist, create one. 
     fd = open("/var/tmp/aesdsocketdata", O_RDWR | O_CREAT, S_IWUSR | S_IRUSR | S_IWGRP | S_IRGRP | S_IROTH);
     if (fd == -1) {
@@ -125,8 +140,9 @@ int main(int argc, char *argv[])
         syslog(LOG_ERR, "socket creation failed...\n");
         return -1;;
     }
-    else
+    else {
         syslog(LOG_INFO, "Socket successfully created..\n");
+    }
     
     bzero(&servaddr, sizeof(servaddr));
    
@@ -143,38 +159,59 @@ int main(int argc, char *argv[])
         syslog(LOG_ERR, "socket bind failed...\n");
         return -1;
     }
-    else
+    else {
         syslog(LOG_INFO, "Socket successfully binded..\n");
-  
-    fork(); 
-    // Now server is ready to listen and verification
-    if ((listen(sockfd, 5)) != 0) {
-        syslog(LOG_ERR, "Listen failed...\n");
-        return -1;;
     }
-    else
-        syslog(LOG_INFO, "Server listening..\n");
-		
-    len = sizeof(struct sockaddr_in);
-   
-    while (1) {
-	if (run_connections) {
-		// Accept the data packet from client and verification
-		connfd = accept(sockfd, (SA*)&cli, (socklen_t *restrict) &len);
-		file_err = errno;
-		if ((connfd < 0) && (file_err != EAGAIN)) {
-			syslog(LOG_ERR, "server accept failed...\n");
-			exit(0);
-		}
-		else if (!(connfd < 0)) {
-			syslog(LOG_INFO, "server accept the client...\n");
-   
-		// Function for chatting between client and server
-		func(connfd);
-		}
-         }
 
+    if (dont_fork == 0) { //fork if dont_fork is not true
+       pid = fork();
     }
-    // After chatting close the socket
+
+    if (pid == 0) {
+
+       if (signal(SIGTERM, sig_handler) == SIG_ERR) {
+           printf("\n failed to register for signal");
+	   goto prog_cleanup;
+       }
+
+       if (signal(SIGINT, sig_handler) == SIG_ERR) {
+           printf("\n failed to register for signal");
+	   goto prog_cleanup;
+       }
+
+       // Now server is ready to listen and verification
+       if ((listen(sockfd, 5)) != 0) {
+           syslog(LOG_ERR, "Listen failed...\n");
+	   goto prog_cleanup;
+       } else {
+           syslog(LOG_INFO, "Server listening..\n");
+       }
+
+       len = sizeof(struct sockaddr_in);
+   
+       while (run_connections) {
+	  // Accept the data packet from client and verification
+	  connfd = accept(sockfd, (SA*)&cli, (socklen_t *restrict) &len);
+	  file_err = errno;
+	  if ((connfd < 0) && (file_err != EAGAIN)) {
+	      syslog(LOG_ERR, "server accept failed...\n");
+	      break;
+	  } else if (!(connfd < 0)) {
+	      syslog(LOG_INFO, "server accept the client...\n");
+   
+	      process_client_connection(connfd);
+	  }
+       }
+
+prog_cleanup:
+       //remove the file
+       if (remove("/var/tmp/aesdsocketdata") != 0) {
+	   syslog(LOG_ERR, "Failed to delete the /var/tmp/aesdsocketdata file");
+       }
+    } // (pid == 0)
+
+
+    //close socked and /var/tmp/aesd file fds
+    close(fd);
     close(sockfd);
 }
