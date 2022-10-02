@@ -112,7 +112,6 @@ int main(int argc, char *argv[])
 {
 
     int file_err = -1;
-    printf("\n NUMBE OF ARGUMENTS ARE %d", argc);
 
     pid_t pid = 0;
     int sockfd, connfd, len;
