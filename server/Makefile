@@ -12,7 +12,7 @@ CFLAGS= -O0 -Wall -Werror -O -g $(INCLUDE_DIRS) $(CDEFS)
 
 PRODUCT=aesdsocket
 
-HFILES= 
+HFILES= queue.h 
 CFILES= aesdsocket.c
 
 SRCS= ${HFILES} ${CFILES}
