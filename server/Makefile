@@ -8,7 +8,7 @@ endif
 
 CDEFS=
 CFLAGS= -O0 -Wall -Werror -O -g $(INCLUDE_DIRS) $(CDEFS)
-#LIBS=-lpthread
+LIBS=-lpthread
 
 PRODUCT=aesdsocket
 
