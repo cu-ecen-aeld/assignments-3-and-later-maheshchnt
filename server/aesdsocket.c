@@ -12,43 +12,136 @@
 #include <fcntl.h>
 #include <signal.h>
 
+#include <stdbool.h>
+#include <pthread.h>
+#include "queue.h"
+
 #define MAX_BUF_SIZE         (1024)
 #define PORT                 (9000)
 #define SA struct sockaddr   
 
-#if 0
-int getaddrinfo(const char *restrict node,
-                       const char *restrict service,
-                       const struct addrinfo *restrict hints,
-                       struct addrinfo **restrict res);
+// client connection queue lock
+pthread_mutex_t queue_lock;
 
-       void freeaddrinfo(struct addrinfo *res);
-#endif	   
-	   
+// lock to protect pkt file
+pthread_mutex_t file_lock;
+
+//client connection queue
+typedef struct client_queue {
+	int        connfd;           //client connection fd
+	int        task_finished;    //flag to indicate client thread is done
+	pthread_t  threadId;
+	TAILQ_ENTRY(client_queue) ent;
+} client_queue_t;
+
+typedef TAILQ_HEAD(head_s, client_queue) head_t;
+
+//head of the queue
+head_t head;
+
+//thread function to process the client's connection
+void *process_client_connection(void *e);
+
+// Takes a string and puts in in the queue on character at a time.
+static int create_client_thread(int connfd)
+{
+    int rc = -1; //return code
+
+    struct client_queue *e = malloc(sizeof(struct client_queue));
+    if (e == NULL)
+    {
+        syslog(LOG_ERR, "Failed to allocate memory");
+	return -1;
+    }
+
+    e->connfd = connfd;
+    e->task_finished = 0;
+
+    // Create a thread that will function threadFunc()
+    rc = pthread_create(&e->threadId, NULL, &process_client_connection, (void *)e);
+    if (rc != 0) {
+        free(e); // free the allocated memory and return error
+        return -1;
+    }
+
+    //acquire lock
+    if (pthread_mutex_lock(&queue_lock) != 0) {
+        syslog(LOG_ERR, "\r\n Failed to acquire lock"); //assert would be better
+	return -1;
+    }
+    TAILQ_INSERT_TAIL(&head, e, ent);
+
+    //unlock
+    if (pthread_mutex_unlock(&queue_lock) != 0) {
+        syslog(LOG_ERR, "Failed to unlock");
+        return -1;
+    }
+
+    return 0;
+}
+
+int check_for_finished_client_threads()
+{
+    int    outstanding_cons = 0; //num active client connections
+    struct client_queue *e = NULL;
+    struct client_queue *next = NULL;
+
+     //acquire lock
+    if (pthread_mutex_lock(&queue_lock) != 0) {
+        syslog(LOG_ERR, "\r\n Failed to acquire lock"); //assert would be better
+	return -1;
+    }
+    //iterate over all connection elements
+    TAILQ_FOREACH_SAFE(e, &head, ent, next)
+    {
+        if (e->task_finished == true) {
+	   pthread_join(e->threadId, NULL);
+	   close(e->connfd);
+	   TAILQ_REMOVE(&head, e, ent);
+           free(e);
+	} else {
+           outstanding_cons++;
+	}
+    }
+
+    //unlock
+    if (pthread_mutex_unlock(&queue_lock) != 0) {
+        syslog(LOG_ERR, "Failed to unlock");
+        return -1;
+    }
+
+    return outstanding_cons;
+}
+
 int fd = -1;//file descriptor
-char *buff; //packet buffer
 char write_back_pkt[MAX_BUF_SIZE];
 
 /*
  *  1. Write the contents into the file
  *  2. Send all the file contents back to client
  */
-int process_packet(int connfd, int len)
+int process_packet(int connfd, int len, char *buff)
 {
    int file_err = -1;
    int write_bytes = 0;
    int read_bytes = 0;
 
+   //acquire lock
+   if (pthread_mutex_lock(&file_lock) != 0) {
+       syslog(LOG_ERR, "\r\n Failed to acquire lock"); //assert would be better
+   }
+
    //append the packet to the pkt file contents
    lseek (fd, 0, SEEK_END);
    // write the string into the given file
+
 
    write_bytes =  write (fd, buff, len);
    file_err = errno;
    if (write_bytes != len) {
       syslog(LOG_ERR, "Failed to write %s to %s. Errno:%d", buff, "/var/tmp/aesdsocketdata", file_err);
    } else {
-      //syslog(LOG_DEBUG, "Writing %s to %s len:%d fd:%d", buff, "/var/tmp/aesdsocketdata", len, fd);
+      syslog(LOG_DEBUG, "Writing %s to %s len:%d fd:%d", buff, "/var/tmp/aesdsocketdata", len, fd);
    }
 
    //send data in 1024 chunks
@@ -61,16 +154,45 @@ int process_packet(int connfd, int len)
 	  return -1;
       } 
    }
- 
+
+       //acquire lock
+   if (pthread_mutex_unlock(&file_lock) != 0) {
+       syslog(LOG_ERR, "\r\n Failed to unlock"); //assert would be better
+    }
+
    return 0;
 }
 
 // Function designed for chat between client and server.
-void process_client_connection(int connfd)
+void *process_client_connection(void *e)
 {
+
+    syslog(LOG_INFO, "created client thread");
+    char *buff; //packet buffer
+    struct client_queue *thread_params;
+    int connfd;
     int  n = 0, len = 0;
 
+    //locks are needed here for this application, but it is always safe to take lock while accessing critical section
+    //acquire lock
+    if (pthread_mutex_lock(&queue_lock) != 0) {
+        syslog(LOG_ERR, "\r\n Failed to acquire lock"); //assert would be better
+    }
+
+    //retrieve the data from the client queue
+    thread_params = (struct client_queue *) e;
+    connfd = thread_params->connfd;
+
+    //acquire lock
+    if (pthread_mutex_unlock(&queue_lock) != 0) {
+        syslog(LOG_ERR, "\r\n Failed to acquire lock"); //assert would be better
+    }
+
     buff = malloc(MAX_BUF_SIZE);
+    if (buff == NULL) {
+       syslog(LOG_ERR, "Failed to allocate memory");
+       goto cleanup;
+    }
     bzero(buff, MAX_BUF_SIZE);
     // infinite loop for chat
    
@@ -80,7 +202,7 @@ void process_client_connection(int connfd)
 	// copy server message into buffer
         for (n = 0; n < MAX_BUF_SIZE; n++) {
             if (buff[len++] == '\n') {
-		if (process_packet(connfd, len) != 0) {
+		if (process_packet(connfd, len, buff) != 0) {
 		   syslog(LOG_ERR, "Failed to process packet that is of %d len", len);
 		   goto cleanup;
 		}
@@ -94,6 +216,16 @@ void process_client_connection(int connfd)
 cleanup:
 
     free(buff);
+    //acquire lock
+    if (pthread_mutex_lock(&queue_lock) != 0) {
+        syslog(LOG_ERR, "\r\n Failed to acquire lock"); //assert would be better
+    }
+    thread_params->task_finished = 1;
+    //acquire lock
+    if (pthread_mutex_unlock(&queue_lock) != 0) {
+        syslog(LOG_ERR, "\r\n Failed to acquire lock"); //assert would be better
+    }
+    pthread_exit( NULL );
 }
 
 //flag to enable/disable
@@ -178,6 +310,17 @@ int main(int argc, char *argv[])
 	   goto prog_cleanup;
        }
 
+       // create two seperate locks: one for queue and other file file sync
+       if (pthread_mutex_init(&queue_lock, NULL) != 0) {
+           printf("\n mutex init failed\n");
+           goto prog_cleanup;
+       }
+
+       if (pthread_mutex_init(&file_lock, NULL) != 0) {
+           printf("\n mutex init failed\n");
+           goto prog_cleanup;
+       }
+
        // Now server is ready to listen and verification
        if ((listen(sockfd, 5)) != 0) {
            syslog(LOG_ERR, "Listen failed...\n");
@@ -187,7 +330,10 @@ int main(int argc, char *argv[])
        }
 
        len = sizeof(struct sockaddr_in);
-   
+
+       //initialize client queue head
+       TAILQ_INIT(&head);
+
        while (run_connections) {
 	  // Accept the data packet from client and verification
 	  connfd = accept(sockfd, (SA*)&cli, (socklen_t *restrict) &len);
@@ -197,11 +343,22 @@ int main(int argc, char *argv[])
 	      break;
 	  } else if (!(connfd < 0)) {
 	      syslog(LOG_INFO, "server accept the client...\n");
-   
-	      process_client_connection(connfd);
+
+	      if (create_client_thread(connfd) == 0) {
+		  syslog(LOG_INFO, "thread successfully for %d connection", connfd);
+	      }  
 	  }
+
+	  //check if client thread is joined
+	  (void) check_for_finished_client_threads();
        }
 
+       //control comes when signal is detected and run_connections == 0
+       while (check_for_finished_client_threads() != 0) {
+	       //wait for all outstanding connections to be finished;
+       }
+
+       printf("\n NO CONNECTIONS");
 prog_cleanup:
        //remove the file
        if (remove("/var/tmp/aesdsocketdata") != 0) {
@@ -209,7 +366,8 @@ prog_cleanup:
        }
     } // (pid == 0)
 
-
+    //TODO
+    printf("\n exiting the program");
     //close socked and /var/tmp/aesd file fds
     close(fd);
     close(sockfd);
