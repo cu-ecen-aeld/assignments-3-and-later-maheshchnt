@@ -14,6 +14,9 @@
 
 #include <stdbool.h>
 #include <pthread.h>
+#include <sys/signal.h>
+#include <sys/time.h>
+#include <time.h>
 #include "queue.h"
 
 #define MAX_BUF_SIZE         (1024)
@@ -239,6 +242,82 @@ void sig_handler(int signo)
   }
 }
 
+
+void timer_thread(union sigval arg)
+{
+  //source: geeksfrom geeks
+  int rc = 0; //return code
+  time_t tm;
+  struct tm *local_time;
+  char time_stamp[1024];
+  int len = 0, write_bytes = 0;
+  int file_err = 0;
+
+  //get time in seconds since epoch
+  (void)time(&tm);
+
+  //convert the seconds to local time
+  local_time = localtime(&tm); 
+
+  //retrieve time in required format
+  strftime(time_stamp, sizeof(time_stamp), "timestamp:%y/%m/%d - %T\n", local_time);
+  len = strlen(time_stamp);
+
+  rc = pthread_mutex_lock(&file_lock);
+  if (rc != 0) {
+      syslog(LOG_ERR, "Failed to acquire lock"); //maybe assert
+  }
+
+  write_bytes =  write (fd, time_stamp, len);
+  file_err = errno;
+
+  rc = pthread_mutex_unlock(&file_lock);
+  if (rc != 0) {
+     syslog(LOG_ERR, "Failed to unlock"); //maybe assert
+  }
+
+  if (write_bytes != len) {
+      syslog(LOG_ERR, "Failed to write %s to %s. Errno:%d", time_stamp, "/var/tmp/aesdsocketdata", file_err);
+   } else {
+      syslog(LOG_DEBUG, "Writing %s to %s len:%d fd:%d", time_stamp, "/var/tmp/aesdsocketdata", len, fd);
+   }
+
+
+}
+
+int setup_posix_timer()
+{
+   timer_t timer_id;
+   struct  itimerspec sleep_time;
+   struct  sigevent sev;
+
+   memset(&sev, 0, sizeof(struct sigevent));
+
+  /* setup a call to timer_thread passing in the td structure as the segev_value*/
+  sev.sigev_notify = SIGEV_THREAD;
+  sev.sigev_value.sival_ptr = &timer_id;
+  sev.sigev_notify_function = timer_thread;
+  sev.sigev_notify_attributes = NULL;
+
+  if (timer_create(CLOCK_REALTIME, &sev, &timer_id) < 0) {
+      syslog(LOG_ERR, "Failed to create timer");
+      return -1;
+  }
+
+  /* set sleep time to 10.001s to ensure the last ms aligned timer event is fired*/
+  sleep_time.it_value.tv_sec = 10;
+  sleep_time.it_value.tv_nsec = 1000000;
+  sleep_time.it_interval.tv_sec = 10;
+  sleep_time.it_interval.tv_nsec = 1000000;
+
+  if (timer_settime(timer_id, 0, &sleep_time, 0) < 0) {
+      syslog(LOG_ERR, "Failed to start timer");
+      return -1;
+  }
+
+  return 0;
+}
+
 // Driver function
 int main(int argc, char *argv[])
 {
@@ -329,6 +408,9 @@ int main(int argc, char *argv[])
            syslog(LOG_INFO, "Server listening..\n");
        }
 
+       //setup and start timer
+       (void)setup_posix_timer();
+
        len = sizeof(struct sockaddr_in);
 
        //initialize client queue head
@@ -358,7 +440,6 @@ int main(int argc, char *argv[])
 	       //wait for all outstanding connections to be finished;
        }
 
-       printf("\n NO CONNECTIONS");
 prog_cleanup:
        //remove the file
        if (remove("/var/tmp/aesdsocketdata") != 0) {
@@ -366,8 +447,6 @@ prog_cleanup:
        }
     } // (pid == 0)
 
-    //TODO
-    printf("\n exiting the program");
     //close socked and /var/tmp/aesd file fds
     close(fd);
     close(sockfd);

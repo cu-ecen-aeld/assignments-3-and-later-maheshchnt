@@ -25,7 +25,7 @@ clean:
 	-rm -f ${PRODUCT} ${DERIVED} ${GARBAGE}
 
 ${PRODUCT}:	${OBJS}
-	$(CC) $(LDFLAGS) $(CFLAGS) -o $@ $(OBJS) $(LIBS)
+	$(CC) $(LDFLAGS) $(CFLAGS) -o $@ $(OBJS) $(LIBS) -lrt
 
 depend:
 
