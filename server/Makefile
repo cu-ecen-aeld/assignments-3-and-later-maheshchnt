@@ -1,14 +1,11 @@
 INCLUDE_DIRS = 
 LIB_DIRS =
-ifdef CROSS_COMPILE
-	CC = $(CROSS_COMPILE)gcc
-else
-CC = gcc
-endif
 
-CDEFS=
-CFLAGS= -O0 -Wall -Werror -O -g $(INCLUDE_DIRS) $(CDEFS)
-LIBS=-lpthread
+CROSS_COMPILE =
+
+CC?=$(CROSS_COMPILE)gcc
+CFLAGS?= -O0 -Wall -Werror -O -g $(INCLUDE_DIRS) $(LDFLAGS)
+LDFLAGS?= -pthread -lrt
 
 PRODUCT=aesdsocket
 
@@ -25,7 +22,7 @@ clean:
 	-rm -f ${PRODUCT} ${DERIVED} ${GARBAGE}
 
 ${PRODUCT}:	${OBJS}
-	$(CC) $(LDFLAGS) $(CFLAGS) -o $@ $(OBJS) $(LIBS) -lrt
+	$(CC) $(CFLAGS) -o $@ $(OBJS) $(LDFLAGS)
 
 depend:
 
