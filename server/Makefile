@@ -8,11 +8,11 @@ endif
 
 CDEFS=
 CFLAGS= -O0 -Wall -Werror -O -g $(INCLUDE_DIRS) $(CDEFS)
-#LIBS=-lpthread
+LIBS=-lpthread
 
 PRODUCT=aesdsocket
 
-HFILES= 
+HFILES= queue.h 
 CFILES= aesdsocket.c
 
 SRCS= ${HFILES} ${CFILES}
@@ -25,7 +25,7 @@ clean:
 	-rm -f ${PRODUCT} ${DERIVED} ${GARBAGE}
 
 ${PRODUCT}:	${OBJS}
-	$(CC) $(LDFLAGS) $(CFLAGS) -o $@ $(OBJS) $(LIBS)
+	$(CC) $(LDFLAGS) $(CFLAGS) -o $@ $(OBJS) $(LIBS) -lrt
 
 depend:
 
