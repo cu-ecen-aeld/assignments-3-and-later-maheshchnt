@@ -57,7 +57,7 @@ struct aesd_buffer_entry *aesd_circular_buffer_find_entry_offset_for_fpos(struct
     if (buffer != NULL) {
 	// read and write pointers are same but full flag is not set (empty condition)
 	if ((buffer->in_offs == buffer->out_offs) && (buffer->full == 0)) {
-	    printf("I shouldn't be coming here. IN:%d OUT:%d FULL:%d\n\r", buffer->in_offs, buffer->out_offs, buffer->full);
+	    fprintf(stderr, "I shouldn't be coming here. IN:%d OUT:%d FULL:%d\n\r", buffer->in_offs, buffer->out_offs, buffer->full);
             return NULL;
 	}
 
@@ -105,7 +105,7 @@ void aesd_circular_buffer_add_entry(struct aesd_circular_buffer *buffer, const s
 
 	buffer->entry[buffer->in_offs] = *add_entry;
 
-	printf("written %s in %d offsetn\n\r", buffer->entry[buffer->in_offs].buffptr, buffer->in_offs);
+	fprintf(stderr, "written %s in %d offsetn\n\r", buffer->entry[buffer->in_offs].buffptr, buffer->in_offs);
 
     	if (buffer->full) {//if full increment read pointer aswell
 	     buffer->out_offs = next_in_index;
@@ -114,7 +114,7 @@ void aesd_circular_buffer_add_entry(struct aesd_circular_buffer *buffer, const s
     	}
 
 	//TODO: Debug print
-	printf("CUR_WR_PTR:%d NEXT_WR_PTR=%d CUR_RD_PTR=%d FULL=%d\n\r", buffer->in_offs, next_in_index, buffer->out_offs, buffer->full);
+	fprintf(stderr, "CUR_WR_PTR:%d NEXT_WR_PTR=%d CUR_RD_PTR=%d FULL=%d\n\r", buffer->in_offs, next_in_index, buffer->out_offs, buffer->full);
 
 
 	buffer->in_offs = next_in_index;
