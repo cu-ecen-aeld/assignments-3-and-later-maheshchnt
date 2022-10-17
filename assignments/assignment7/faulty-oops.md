@@ -1,8 +1,11 @@
-##Analysis of OOPS
+## Analysis of OOPS
 
 Accessing the faulty module by writing hello world to it reported OOPs and caused system to reboot.
+
 From the code it looks obvious that the oops is because of NULL pointer access in the write function of the driver.
+
 From the below oops log which was resulted because of NULL, it can be seen that the PC (program counter) was at 0x14 offset from the start of faulty_write function which is of size 0x20.
+
 The log also some infromation such as cpu register dump and the function trace that resulted the OOPS.
 Using objdump, the instruction that caused the OOPS can be clearly seen--copied objdump below of reference. As shown in the objdump,  instruction (14:   b900003f        str     wzr, [x1]) while accessing the memory location stored in X1 register has resulted the crash. As PC pointed, the address offset of this instruction is 0x14 from "faulty_write" function address.
 
