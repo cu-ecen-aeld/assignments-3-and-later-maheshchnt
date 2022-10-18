@@ -95,9 +95,9 @@ struct aesd_buffer_entry *aesd_circular_buffer_find_entry_offset_for_fpos(struct
 * Any necessary locking must be handled by the caller
 * Any memory referenced in @param add_entry must be allocated by and/or must have a lifetime managed by the caller.
 */
-struct aesd_buffer_entry *aesd_circular_buffer_add_entry(struct aesd_circular_buffer *buffer, const struct aesd_buffer_entry *add_entry)
+char *aesd_circular_buffer_add_entry(struct aesd_circular_buffer *buffer, const struct aesd_buffer_entry *add_entry)
 {
-    struct aesd_buffer_entry *remove_entry = NULL;
+    char *remove_buffptr = NULL;
     int next_in_index;
 
     if (buffer != NULL) {
@@ -107,7 +107,7 @@ struct aesd_buffer_entry *aesd_circular_buffer_add_entry(struct aesd_circular_bu
 	PDEBUG("written %s in %d offsetn\n\r", buffer->entry[buffer->in_offs].buffptr, buffer->in_offs);
 
     	if (buffer->full) {//if full, overwrite the buffer and return the ptr of entry that is overwritten 
-	     remove_entry = &buffer->entry[buffer->out_offs];
+	     remove_buffptr = buffer->entry[buffer->out_offs].buffptr;
 	     buffer->out_offs = next_in_index;
     	} else if (next_in_index == buffer->out_offs) {
 	     buffer->full = 1;
@@ -122,7 +122,7 @@ struct aesd_buffer_entry *aesd_circular_buffer_add_entry(struct aesd_circular_bu
 	buffer->in_offs = next_in_index;
     }
 
-    return remove_entry;
+    return remove_buffptr;
 }
 
 /**

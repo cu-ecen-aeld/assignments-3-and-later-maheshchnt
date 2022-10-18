@@ -66,12 +66,14 @@ ssize_t aesd_read(struct file *filp, char __user *buf, size_t count,
 
     rd_entry = aesd_circular_buffer_find_entry_offset_for_fpos(&dev->buffer, *f_pos, &relative_pos);
     if (rd_entry == NULL) {
+	PDEBUG("aesd_read: No data to send\r\n");
 	return retval; //zero
     }
 
     //copy to user buff
     if (__copy_to_user(buf, rd_entry->buffptr, rd_entry->size) == 0) {
-        retval = rd_entry->size;
+        retval = rd_entry->size; //FIXME: adjust the count
+	*f_pos = *f_pos+retval;
     } else {
 	PDEBUG("aesd_read: failed to copy to user\r\n");
         //TODO: return value?
@@ -80,6 +82,7 @@ ssize_t aesd_read(struct file *filp, char __user *buf, size_t count,
     /**
      * TODO: handle read
      */
+    PDEBUG("aesd_read: string %s read and its size id %d\r\n", rd_entry->buffptr, retval);
     return retval;
 }
 
@@ -112,8 +115,8 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
                 loff_t *f_pos)
 {
     struct aesd_dev *dev = filp->private_data;
-    struct aesd_buffer_entry *wr_entry;
-    struct aesd_buffer_entry *rm_entry = NULL; //removed entry
+    struct aesd_buffer_entry wr_entry;
+    char  *rm_buffptr = NULL; //removed entry
     char   *buffptr;
     bool   partial_data = 1;
 
@@ -146,20 +149,11 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
 	//combine all the partial data ptrs and copy the data to buffptr
 	//free the partial data ptr
 	
-    	//allocate the memory for entry
-    	wr_entry = kmalloc(sizeof(struct aesd_buffer_entry), GFP_KERNEL);
-    	if (wr_entry == NULL) {
-	    PDEBUG(" aesd_write: Failed to allocate memory for entry\r\n");
-            kfree(buffptr);	
-	    return -ENOMEM;
-    	}
-
-	wr_entry->buffptr = buffptr;
-
-	rm_entry = aesd_circular_buffer_add_entry(&dev->buffer, wr_entry);
-        if (rm_entry != NULL) { //overwritten entry, free it
-	   kfree(rm_entry->buffptr);
-	   kfree(rm_entry);
+	wr_entry.buffptr = buffptr;
+	wr_entry.size = count;
+	rm_buffptr = aesd_circular_buffer_add_entry(&dev->buffer, &wr_entry);
+        if (rm_buffptr != NULL) { //overwritten entry, free it
+	   kfree(rm_buffptr);
 	}
 
 	retval = count;
