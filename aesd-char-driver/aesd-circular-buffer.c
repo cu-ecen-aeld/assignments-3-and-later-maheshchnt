@@ -104,7 +104,7 @@ char *aesd_circular_buffer_add_entry(struct aesd_circular_buffer *buffer, const 
 	//get the next write entry index
 	next_in_index = nextPtr(buffer->in_offs);
 
-	PDEBUG("written %s in %d offsetn\n\r", buffer->entry[buffer->in_offs].buffptr, buffer->in_offs);
+	PDEBUG("writing %s in %d offsetn\n\r", add_entry->buffptr, buffer->in_offs);
 
     	if (buffer->full) {//if full, overwrite the buffer and return the ptr of entry that is overwritten 
 	     remove_buffptr = buffer->entry[buffer->out_offs].buffptr;
@@ -120,7 +120,7 @@ char *aesd_circular_buffer_add_entry(struct aesd_circular_buffer *buffer, const 
 	PDEBUG("CUR_WR_PTR:%d NEXT_WR_PTR=%d CUR_RD_PTR=%d FULL=%d\n\r", buffer->in_offs, next_in_index, buffer->out_offs, buffer->full);
 
 	buffer->in_offs = next_in_index;
-    }
+    } 
 
     return remove_buffptr;
 }

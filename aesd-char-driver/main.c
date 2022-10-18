@@ -86,6 +86,38 @@ ssize_t aesd_read(struct file *filp, char __user *buf, size_t count,
     return retval;
 }
 
+
+/** Function to handle the partial data memory.
+ *  
+ *  Accepts the old partial date buffer ptr and it's size and creates a new partial 
+ *  buffer with new size and return the new partial data buffer ptr.
+ *
+ *  @return char ptr which is new partial data buff ptr.
+ *           
+ **/
+char *handle_partial_data(char *partial_data_buf, int partial_mem_size, char *new_data_ptr, int new_size)
+{
+    void *buf;
+
+    if (partial_data_buf == NULL) {
+       return new_data_ptr;	
+    } 
+    
+    buf = kmalloc(new_size, GFP_KERNEL);
+    if (buf == NULL) { //error condition
+	    //TODO: assert?
+        return NULL;
+    }
+
+    //copy old  and new contents into newly allocated memory and free the old memory
+    memcpy(buf, partial_data_buf, partial_mem_size);
+    memcpy((buf+partial_mem_size), new_data_ptr, (new_size-partial_mem_size));
+
+    kfree(partial_data_buf);
+
+    return buf;
+}
+
 /** check if the given string is '\n' terminated.
  *
  *  @return 1 is not terminated
@@ -119,6 +151,7 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
     char  *rm_buffptr = NULL; //removed entry
     char   *buffptr;
     bool   partial_data = 1;
+    int    total_buf_size = 0;
 
     ssize_t retval = -ENOMEM;
     PDEBUG("write %zu bytes with offset %lld",count,*f_pos);
@@ -145,17 +178,31 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
     partial_data = is_data_partial(buffptr, count);
     if (partial_data == 0) {
 
-	//FIXME: check if this write is happening after partial write. If yes, handle it
-	//combine all the partial data ptrs and copy the data to buffptr
-	//free the partial data ptr
+	// if the partial buffer is not empty, handle it
+	if (dev->part_mem_ptr != NULL) {
+            buffptr = handle_partial_data(dev->part_mem_ptr, 
+			    dev->part_buf_size, buffptr, (dev->part_buf_size+count));
+	    total_buf_size = dev->part_buf_size+count;
+	    //reset partial buffer info
+	    dev->part_mem_ptr = NULL;
+	    dev->part_buf_size = 0;
+	}
+
+	PDEBUG(" aesd_write: FINAL BUFF contains %s and count is %d\r\n", buffptr, count);
 	
 	wr_entry.buffptr = buffptr;
-	wr_entry.size = count;
+	wr_entry.size = (total_buf_size != 0) ? total_buf_size:count;
 	rm_buffptr = aesd_circular_buffer_add_entry(&dev->buffer, &wr_entry);
         if (rm_buffptr != NULL) { //overwritten entry, free it
 	   kfree(rm_buffptr);
 	}
 
+	retval = count;
+    } else { //partial data
+	dev->part_mem_ptr = handle_partial_data(dev->part_mem_ptr,           
+                 dev->part_buf_size, buffptr, (dev->part_buf_size+count));
+	PDEBUG(" aesd_write: CURR BUFF contains %s\r\n", dev->part_mem_ptr);
+	dev->part_buf_size += count;
 	retval = count;
     }
 
