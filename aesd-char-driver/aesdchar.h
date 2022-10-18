@@ -8,6 +8,11 @@
 #ifndef AESD_CHAR_DRIVER_AESDCHAR_H_
 #define AESD_CHAR_DRIVER_AESDCHAR_H_
 
+#ifdef __KERNEL__
+#include <linux/kernel.h>
+#include <linux/cdev.h>
+#endif
+
 #define AESD_DEBUG 1  //Remove comment on this line to enable debug
 
 #undef PDEBUG             /* undef it, just in case */
@@ -23,8 +28,12 @@
 #  define PDEBUG(fmt, args...) /* not debugging: nothing */
 #endif
 
+#include "aesd-circular-buffer.h"
+
+
 struct aesd_dev
 {
+    struct aesd_circular_buffer buffer;
     /**
      * TODO: Add structure(s) and locks needed to complete assignment requirements
      */
