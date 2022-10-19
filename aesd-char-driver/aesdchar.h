@@ -34,6 +34,9 @@
 struct aesd_dev
 {
     struct aesd_circular_buffer buffer;
+    char   *part_mem_ptr; //partial memory pointer
+    int    part_buf_size; //partial buffer size
+    struct mutex buf_lock; //buf lock
     /**
      * TODO: Add structure(s) and locks needed to complete assignment requirements
      */

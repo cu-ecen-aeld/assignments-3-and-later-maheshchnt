@@ -55,6 +55,7 @@ struct aesd_buffer_entry *aesd_circular_buffer_find_entry_offset_for_fpos(struct
     int    next_out_index = 0;
 
     if (buffer != NULL) {
+	//TODO: lock here
 	// read and write pointers are same but full flag is not set (empty condition)
 	if ((buffer->in_offs == buffer->out_offs) && (buffer->full == 0)) {
 	    PDEBUG("I shouldn't be coming here. IN:%d OUT:%d FULL:%d\n\r", buffer->in_offs, buffer->out_offs, buffer->full);
@@ -80,6 +81,7 @@ struct aesd_buffer_entry *aesd_circular_buffer_find_entry_offset_for_fpos(struct
 	    }
 
 	}
+	//TODO: unlock here
 
     }
     /**
@@ -101,6 +103,7 @@ char *aesd_circular_buffer_add_entry(struct aesd_circular_buffer *buffer, const 
     int next_in_index;
 
     if (buffer != NULL) {
+	//TODO: lock here
 	//get the next write entry index
 	next_in_index = nextPtr(buffer->in_offs);
 
@@ -120,6 +123,7 @@ char *aesd_circular_buffer_add_entry(struct aesd_circular_buffer *buffer, const 
 	PDEBUG("CUR_WR_PTR:%d NEXT_WR_PTR=%d CUR_RD_PTR=%d FULL=%d\n\r", buffer->in_offs, next_in_index, buffer->out_offs, buffer->full);
 
 	buffer->in_offs = next_in_index;
+	//TODO:unlock here
     } 
 
     return remove_buffptr;

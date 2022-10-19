@@ -27,7 +27,6 @@ MODULE_AUTHOR("Your Name Here"); /** TODO: fill in your name **/
 MODULE_LICENSE("Dual BSD/GPL");
 
 struct aesd_dev aesd_device;
-
 int aesd_open(struct inode *inode, struct file *filp)
 {
     PDEBUG("open");
@@ -64,7 +63,14 @@ ssize_t aesd_read(struct file *filp, char __user *buf, size_t count,
 
     PDEBUG("read %zu bytes with offset %lld",count,*f_pos);
 
+    //take lock before reading the data into circular buffer
+    if (mutex_lock_interruptible(&dev->buf_lock))
+        return -ERESTARTSYS;
+
     rd_entry = aesd_circular_buffer_find_entry_offset_for_fpos(&dev->buffer, *f_pos, &relative_pos);
+
+    mutex_unlock(&dev->buf_lock);
+
     if (rd_entry == NULL) {
 	PDEBUG("aesd_read: No data to send\r\n");
 	return retval; //zero
@@ -192,7 +198,16 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
 	
 	wr_entry.buffptr = buffptr;
 	wr_entry.size = (total_buf_size != 0) ? total_buf_size:count;
+	
+	//take lock before writting the data into circular buffer
+	if (mutex_lock_interruptible(&dev->buf_lock)) {
+	    kfree(buffptr);
+            return 0;//-ERESTARTSYS;
+	}
+
 	rm_buffptr = aesd_circular_buffer_add_entry(&dev->buffer, &wr_entry);
+	mutex_unlock(&dev->buf_lock);
+
         if (rm_buffptr != NULL) { //overwritten entry, free it
 	   kfree(rm_buffptr);
 	}
@@ -252,6 +267,7 @@ int aesd_init_module(void)
      * TODO: initialize the AESD specific portion of the device
      */
 
+    mutex_init(&aesd_device.buf_lock);
     result = aesd_setup_cdev(&aesd_device);
 
     if( result ) {
@@ -270,6 +286,9 @@ void aesd_cleanup_module(void)
     /**
      * TODO: cleanup AESD specific poritions here as necessary
      */
+
+    //FIXME: Take care of mutex
+    mutex_destroy(&aesd_device.buf_lock);
 
     unregister_chrdev_region(devno, 1);
 }
