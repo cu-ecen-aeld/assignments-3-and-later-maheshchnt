@@ -39,6 +39,7 @@ typedef struct client_queue {
 	int        connfd;           //client connection fd
 	int        task_finished;    //flag to indicate client thread is done
 	pthread_t  threadId;
+        int 	   fd; //file descriptor
 	TAILQ_ENTRY(client_queue) ent;
 } client_queue_t;
 
@@ -65,6 +66,16 @@ static int create_client_thread(int connfd)
     e->connfd = connfd;
     e->task_finished = 0;
 
+#ifdef USE_AESD_CHAR_DEVICE
+    // open the file. If it doesn't exist, create one. 
+    e->fd = open("/dev/aesdchar", O_RDWR | O_CREAT, S_IWUSR | S_IRUSR | S_IWGRP | S_IRGRP | S_IROTH);
+    if (e->fd == -1) {
+       syslog(LOG_ERR, "Error opening file %s. Errno:%d. Make sure that the directory is already created"\
+                       ,"/dev/aesdchar", errno);
+       return -1;
+    }
+#endif
+ 
     // Create a thread that will function threadFunc()
     rc = pthread_create(&e->threadId, NULL, &process_client_connection, (void *)e);
     if (rc != 0) {
@@ -105,6 +116,7 @@ int check_for_finished_client_threads()
         if (e->task_finished == true) {
 	   pthread_join(e->threadId, NULL);
 	   close(e->connfd);
+	   close(e->fd);
 	   TAILQ_REMOVE(&head, e, ent);
            free(e);
 	} else {
@@ -121,14 +133,16 @@ int check_for_finished_client_threads()
     return outstanding_cons;
 }
 
+#ifndef USE_AESD_CHAR_DEVICE
 int fd = -1;//file descriptor
+#endif
 char write_back_pkt[MAX_BUF_SIZE];
 
 /*
  *  1. Write the contents into the file
  *  2. Send all the file contents back to client
  */
-int process_packet(int connfd, int len, char *buff)
+int process_packet(int connfd, int len, char *buff, int fd)
 {
    int file_err = -1;
    int write_bytes = 0;
@@ -204,7 +218,7 @@ void *process_client_connection(void *e)
 	// copy server message into buffer
         for (n = 0; n < MAX_BUF_SIZE; n++) {
             if (buff[len++] == '\n') {
-		if (process_packet(connfd, len, buff) != 0) {
+		if (process_packet(connfd, len, buff, thread_params->fd) != 0) {
 		   syslog(LOG_ERR, "Failed to process packet that is of %d len", len);
 		   goto cleanup;
 		}
@@ -336,15 +350,7 @@ int main(int argc, char *argv[])
 	printf("\n Invalid number of arguments:%d", argc);
     }
 
-#ifdef USE_AESD_CHAR_DEVICE
-    // open the file. If it doesn't exist, create one. 
-    fd = open("/dev/aesdchar", O_RDWR | O_CREAT, S_IWUSR | S_IRUSR | S_IWGRP | S_IRGRP | S_IROTH);
-    if (fd == -1) {
-       syslog(LOG_ERR, "Error opening file %s. Errno:%d. Make sure that the directory is already created"\
-                       ,"/dev/aesdchar", errno);
-       return -1;
-    }
-#else
+#ifndef USE_AESD_CHAR_DEVICE
     // open the file. If it doesn't exist, create one. 
     fd = open("/var/tmp/aesdsocketdata", O_RDWR | O_CREAT, S_IWUSR | S_IRUSR | S_IWGRP | S_IRGRP | S_IROTH);
     if (fd == -1) {
@@ -378,8 +384,7 @@ int main(int argc, char *argv[])
     if ((bind(sockfd, (SA*)&servaddr, sizeof(servaddr))) != 0) {
         syslog(LOG_ERR, "socket bind failed...\n");
         return -1;
-    }
-    else {
+    } else {
         syslog(LOG_INFO, "Socket successfully binded..\n");
     }
 
@@ -454,21 +459,19 @@ int main(int argc, char *argv[])
 	       //wait for all outstanding connections to be finished;
        }
 
+    }//(pid == 0)
+
 prog_cleanup:
-#ifdef USE_AESD_CHAR_DEVICE
-	//remove the file
-       if (remove("/dev/aesdchar") != 0) {
-	   syslog(LOG_ERR, "Failed to delete the /dev/aesdchar file");
-       }
-#else
+#ifndef USE_AESD_CHAR_DEVICE
        //remove the file
        if (remove("/var/tmp/aesdsocketdata") != 0) {
 	   syslog(LOG_ERR, "Failed to delete the /var/tmp/aesdsocketdata file");
        }
 #endif
-    } // (pid == 0)
 
     //close socked and /var/tmp/aesd file fds
+#ifndef  USE_AESD_CHAR_DEVICE
     close(fd);
+#endif
     close(sockfd);
 }
