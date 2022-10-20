@@ -78,7 +78,7 @@ ssize_t aesd_read(struct file *filp, char __user *buf, size_t count,
 
     //copy to user buff
     if (__copy_to_user(buf, rd_entry->buffptr, rd_entry->size) == 0) {
-        retval = rd_entry->size; //FIXME: adjust the count
+        retval = rd_entry->size; 
 	*f_pos = *f_pos+retval;
     } else {
 	PDEBUG("aesd_read: failed to copy to user\r\n");
@@ -143,7 +143,7 @@ bool is_data_partial(char *buffptr, size_t count)
     }
 
     if ((partial == 0) && (len != count)) {
-	PDEBUG("is_data_partial:packet terminated in the middle of the data\r\n"); //TODO: improvise the error
+	PDEBUG("is_data_partial:partial pkt length error\r\n"); //TODO: improvise the error
     }
 
     return partial;
@@ -162,7 +162,7 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
     ssize_t retval = -ENOMEM;
     PDEBUG("write %zu bytes with offset %lld",count,*f_pos);
 
-    //check the write data size
+    //check the write data size(is this check needed?)
     if (count > 1024) {
         PDEBUG(" Size to be written is too large\r\n");	
 	//TODO: return error ?
@@ -180,11 +180,11 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
 	//TODO: return value?
     }
     
-    //check if \n terminated
+    //check if data is \n terminated
     partial_data = is_data_partial(buffptr, count);
     if (partial_data == 0) {
 
-	// if the partial buffer is not empty, handle it
+	// if there is data in partial buffer, handle that data
 	if (dev->part_mem_ptr != NULL) {
             buffptr = handle_partial_data(dev->part_mem_ptr, 
 			    dev->part_buf_size, buffptr, (dev->part_buf_size+count));
@@ -197,7 +197,7 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
 	PDEBUG(" aesd_write: FINAL BUFF contains %s and count is %d\r\n", buffptr, count);
 	
 	wr_entry.buffptr = buffptr;
-	wr_entry.size = (total_buf_size != 0) ? total_buf_size:count;
+	wr_entry.size = (total_buf_size != 0) ? total_buf_size:count;//handle partial data if any
 	
 	//take lock before writting the data into circular buffer
 	if (mutex_lock_interruptible(&dev->buf_lock)) {
@@ -287,7 +287,15 @@ void aesd_cleanup_module(void)
      * TODO: cleanup AESD specific poritions here as necessary
      */
 
-    //FIXME: Take care of mutex
+    // take the lock before cleaning the buffers(maybe not needed here)
+    if (mutex_lock_interruptible(&aesd_device.buf_lock)) {
+	printk(KERN_ERR "Failed to acquire lock");
+    }
+
+    //cleanup the buffers (free the buffers)
+    cleanup_circulat_buffers(&aesd_device.buffer);
+
+    mutex_unlock(&aesd_device.buf_lock);
     mutex_destroy(&aesd_device.buf_lock);
 
     unregister_chrdev_region(devno, 1);

@@ -10,6 +10,7 @@
 
 #ifdef __KERNEL__
 #include <linux/string.h>
+#include <linux/slab.h>
 #else
 #include <string.h>
 #include <stdio.h>
@@ -55,7 +56,6 @@ struct aesd_buffer_entry *aesd_circular_buffer_find_entry_offset_for_fpos(struct
     int    next_out_index = 0;
 
     if (buffer != NULL) {
-	//TODO: lock here
 	// read and write pointers are same but full flag is not set (empty condition)
 	if ((buffer->in_offs == buffer->out_offs) && (buffer->full == 0)) {
 	    PDEBUG("I shouldn't be coming here. IN:%d OUT:%d FULL:%d\n\r", buffer->in_offs, buffer->out_offs, buffer->full);
@@ -81,7 +81,6 @@ struct aesd_buffer_entry *aesd_circular_buffer_find_entry_offset_for_fpos(struct
 	    }
 
 	}
-	//TODO: unlock here
 
     }
     /**
@@ -103,7 +102,6 @@ char *aesd_circular_buffer_add_entry(struct aesd_circular_buffer *buffer, const 
     int next_in_index;
 
     if (buffer != NULL) {
-	//TODO: lock here
 	//get the next write entry index
 	next_in_index = nextPtr(buffer->in_offs);
 
@@ -119,11 +117,9 @@ char *aesd_circular_buffer_add_entry(struct aesd_circular_buffer *buffer, const 
 	//write the entry
         buffer->entry[buffer->in_offs] = *add_entry;
 
-	//TODO: Debug print
 	PDEBUG("CUR_WR_PTR:%d NEXT_WR_PTR=%d CUR_RD_PTR=%d FULL=%d\n\r", buffer->in_offs, next_in_index, buffer->out_offs, buffer->full);
 
 	buffer->in_offs = next_in_index;
-	//TODO:unlock here
     } 
 
     return remove_buffptr;
@@ -135,4 +131,40 @@ char *aesd_circular_buffer_add_entry(struct aesd_circular_buffer *buffer, const 
 void aesd_circular_buffer_init(struct aesd_circular_buffer *buffer)
 {
     memset(buffer,0,sizeof(struct aesd_circular_buffer));
+}
+
+
+/*
+ * Function to cleanup the circular buffers. Calling function has to take care of
+ * locks.
+ *
+ */
+void cleanup_circulat_buffers(struct aesd_circular_buffer *buffer)
+{
+
+   struct aesd_buffer_entry *entry = NULL;
+   int    next_out_index = 0;
+
+   if (buffer != NULL) {
+	// read and write pointers are same but full flag is not set (empty condition)
+	if ((buffer->in_offs == buffer->out_offs) && (buffer->full == 0)) {
+		//empty condition:do nothing
+	} else {
+
+	   entry = &buffer->entry[buffer->out_offs];
+	   next_out_index = nextPtr(buffer->out_offs);
+	
+	   // iterate over entries until char pos is found
+	   while (entry) {
+	       kfree(entry->buffptr);
+		   //read and write pointers are same-end of buffers
+                   if (next_out_index == buffer->in_offs) {
+		       break;
+		   }
+		   entry = &buffer->entry[next_out_index];
+                   next_out_index = nextPtr(next_out_index);
+	   }
+       }
+   }
+ 
 }
