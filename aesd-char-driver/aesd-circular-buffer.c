@@ -14,6 +14,7 @@
 #else
 #include <string.h>
 #include <stdio.h>
+#include <linux/slab.h>
 #endif
 
 #include "aesd-circular-buffer.h"
