@@ -24,7 +24,8 @@
 
 #define MAX_BUF_SIZE         (1024)
 #define PORT                 (9000)
-#define SA struct sockaddr   
+
+typedef struct sockaddr  sockaddr_t;
 
 // client connection queue lock
 pthread_mutex_t queue_lock;
@@ -381,7 +382,7 @@ int main(int argc, char *argv[])
     servaddr.sin_port = htons(PORT);
    
     // Binding newly created socket to given IP and verification
-    if ((bind(sockfd, (SA*)&servaddr, sizeof(servaddr))) != 0) {
+    if ((bind(sockfd, (sockaddr_t*)&servaddr, sizeof(servaddr))) != 0) {
         syslog(LOG_ERR, "socket bind failed...\n");
         return -1;
     } else {
@@ -437,7 +438,7 @@ int main(int argc, char *argv[])
 
        while (run_connections) {
 	  // Accept the data packet from client and verification
-	  connfd = accept(sockfd, (SA*)&cli, (socklen_t *restrict) &len);
+	  connfd = accept(sockfd, (sockaddr_t*)&cli, (socklen_t *restrict) &len);
 	  file_err = errno;
 	  if ((connfd < 0) && (file_err != EAGAIN)) {
 	      syslog(LOG_ERR, "server accept failed...\n");
