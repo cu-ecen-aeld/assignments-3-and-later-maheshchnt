@@ -11,13 +11,15 @@
 #ifdef __KERNEL__
 #include <linux/string.h>
 #include <linux/slab.h>
+#include "aesdchar.h"
 #else
 #include <string.h>
 #include <stdio.h>
+#include <stdlib.h>
+#define PDEBUG(fmt, args...)
 #endif
 
 #include "aesd-circular-buffer.h"
-#include "aesdchar.h"
 
 /*
  * @brief Private function used only by this .c file.
@@ -156,7 +158,11 @@ void cleanup_circulat_buffers(struct aesd_circular_buffer *buffer)
 	
 	   // iterate over entries until char pos is found
 	   while (entry) {
+#ifdef __KERNEL__
 	       kfree(entry->buffptr);
+#else
+	       free((void *)entry->buffptr);
+#endif
 		   //read and write pointers are same-end of buffers
                    if (next_out_index == buffer->in_offs) {
 		       break;
