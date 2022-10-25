@@ -19,21 +19,28 @@
 #include <time.h>
 #include "queue.h"
 
+//When set, char driver is used
+#define USE_AESD_CHAR_DEVICE (1)
+
 #define MAX_BUF_SIZE         (1024)
 #define PORT                 (9000)
-#define SA struct sockaddr   
+
+typedef struct sockaddr  sockaddr_t;
 
 // client connection queue lock
 pthread_mutex_t queue_lock;
 
+#ifndef USE_AESD_CHAR_DEVICE
 // lock to protect pkt file
 pthread_mutex_t file_lock;
+#endif
 
 //client connection queue
 typedef struct client_queue {
 	int        connfd;           //client connection fd
 	int        task_finished;    //flag to indicate client thread is done
 	pthread_t  threadId;
+        int 	   fd; //file descriptor
 	TAILQ_ENTRY(client_queue) ent;
 } client_queue_t;
 
@@ -60,6 +67,16 @@ static int create_client_thread(int connfd)
     e->connfd = connfd;
     e->task_finished = 0;
 
+#ifdef USE_AESD_CHAR_DEVICE
+    // open the file. If it doesn't exist, create one. 
+    e->fd = open("/dev/aesdchar", O_RDWR | O_CREAT, S_IWUSR | S_IRUSR | S_IWGRP | S_IRGRP | S_IROTH);
+    if (e->fd == -1) {
+       syslog(LOG_ERR, "Error opening file %s. Errno:%d. Make sure that the directory is already created"\
+                       ,"/dev/aesdchar", errno);
+       return -1;
+    }
+#endif
+ 
     // Create a thread that will function threadFunc()
     rc = pthread_create(&e->threadId, NULL, &process_client_connection, (void *)e);
     if (rc != 0) {
@@ -100,6 +117,7 @@ int check_for_finished_client_threads()
         if (e->task_finished == true) {
 	   pthread_join(e->threadId, NULL);
 	   close(e->connfd);
+	   close(e->fd);
 	   TAILQ_REMOVE(&head, e, ent);
            free(e);
 	} else {
@@ -116,19 +134,22 @@ int check_for_finished_client_threads()
     return outstanding_cons;
 }
 
+#ifndef USE_AESD_CHAR_DEVICE
 int fd = -1;//file descriptor
+#endif
 char write_back_pkt[MAX_BUF_SIZE];
 
 /*
  *  1. Write the contents into the file
  *  2. Send all the file contents back to client
  */
-int process_packet(int connfd, int len, char *buff)
+int process_packet(int connfd, int len, char *buff, int fd)
 {
    int file_err = -1;
    int write_bytes = 0;
    int read_bytes = 0;
 
+#ifndef USE_AESD_CHAR_DEVICE
    //acquire lock
    if (pthread_mutex_lock(&file_lock) != 0) {
        syslog(LOG_ERR, "\r\n Failed to acquire lock"); //assert would be better
@@ -137,7 +158,7 @@ int process_packet(int connfd, int len, char *buff)
    //append the packet to the pkt file contents
    lseek (fd, 0, SEEK_END);
    // write the string into the given file
-
+#endif
 
    write_bytes =  write (fd, buff, len);
    file_err = errno;
@@ -147,8 +168,10 @@ int process_packet(int connfd, int len, char *buff)
       syslog(LOG_DEBUG, "Writing %s to %s len:%d fd:%d", buff, "/var/tmp/aesdsocketdata", len, fd);
    }
 
+//#ifndef USE_AESD_CHAR_DEVICE
    //send data in 1024 chunks
    lseek (fd, 0, SEEK_SET);
+//#endif
  
    while ((read_bytes = read(fd, write_back_pkt, MAX_BUF_SIZE))) {
       //syslog(LOG_ERR, "send the %s back to client. len:%d", write_back_pkt, read_bytes);
@@ -158,10 +181,12 @@ int process_packet(int connfd, int len, char *buff)
       } 
    }
 
-       //acquire lock
+#ifndef USE_AESD_CHAR_DEVICE       
+   //acquire lock
    if (pthread_mutex_unlock(&file_lock) != 0) {
        syslog(LOG_ERR, "\r\n Failed to unlock"); //assert would be better
     }
+#endif
 
    return 0;
 }
@@ -176,20 +201,9 @@ void *process_client_connection(void *e)
     int connfd;
     int  n = 0, len = 0;
 
-    //locks are needed here for this application, but it is always safe to take lock while accessing critical section
-    //acquire lock
-    if (pthread_mutex_lock(&queue_lock) != 0) {
-        syslog(LOG_ERR, "\r\n Failed to acquire lock"); //assert would be better
-    }
-
     //retrieve the data from the client queue
     thread_params = (struct client_queue *) e;
     connfd = thread_params->connfd;
-
-    //acquire lock
-    if (pthread_mutex_unlock(&queue_lock) != 0) {
-        syslog(LOG_ERR, "\r\n Failed to acquire lock"); //assert would be better
-    }
 
     buff = malloc(MAX_BUF_SIZE);
     if (buff == NULL) {
@@ -205,7 +219,7 @@ void *process_client_connection(void *e)
 	// copy server message into buffer
         for (n = 0; n < MAX_BUF_SIZE; n++) {
             if (buff[len++] == '\n') {
-		if (process_packet(connfd, len, buff) != 0) {
+		if (process_packet(connfd, len, buff, thread_params->fd) != 0) {
 		   syslog(LOG_ERR, "Failed to process packet that is of %d len", len);
 		   goto cleanup;
 		}
@@ -242,7 +256,7 @@ void sig_handler(int signo)
   }
 }
 
-
+#ifndef USE_AESD_CHAR_DEVICE
 void timer_thread(union sigval arg)
 {
   //source: geeksfrom geeks
@@ -317,6 +331,7 @@ int setup_posix_timer()
 
   return 0;
 }
+#endif
 
 // Driver function
 int main(int argc, char *argv[])
@@ -336,6 +351,7 @@ int main(int argc, char *argv[])
 	printf("\n Invalid number of arguments:%d", argc);
     }
 
+#ifndef USE_AESD_CHAR_DEVICE
     // open the file. If it doesn't exist, create one. 
     fd = open("/var/tmp/aesdsocketdata", O_RDWR | O_CREAT, S_IWUSR | S_IRUSR | S_IWGRP | S_IRGRP | S_IROTH);
     if (fd == -1) {
@@ -343,6 +359,7 @@ int main(int argc, char *argv[])
                        ,"/var/tmp/aesdsocketdata", errno);
        return -1;
     }
+#endif
 
     // socket create and verification 
     sockfd = socket(PF_INET, SOCK_STREAM | SOCK_NONBLOCK, 0); 
@@ -365,11 +382,10 @@ int main(int argc, char *argv[])
     servaddr.sin_port = htons(PORT);
    
     // Binding newly created socket to given IP and verification
-    if ((bind(sockfd, (SA*)&servaddr, sizeof(servaddr))) != 0) {
+    if ((bind(sockfd, (sockaddr_t*)&servaddr, sizeof(servaddr))) != 0) {
         syslog(LOG_ERR, "socket bind failed...\n");
         return -1;
-    }
-    else {
+    } else {
         syslog(LOG_INFO, "Socket successfully binded..\n");
     }
 
@@ -395,10 +411,12 @@ int main(int argc, char *argv[])
            goto prog_cleanup;
        }
 
+#ifndef USE_AESD_CHAR_DEVICE
        if (pthread_mutex_init(&file_lock, NULL) != 0) {
            printf("\n mutex init failed\n");
            goto prog_cleanup;
        }
+#endif
 
        // Now server is ready to listen and verification
        if ((listen(sockfd, 5)) != 0) {
@@ -408,8 +426,10 @@ int main(int argc, char *argv[])
            syslog(LOG_INFO, "Server listening..\n");
        }
 
+#ifndef USE_AESD_CHAR_DEVICE
        //setup and start timer
        (void)setup_posix_timer();
+#endif
 
        len = sizeof(struct sockaddr_in);
 
@@ -418,7 +438,7 @@ int main(int argc, char *argv[])
 
        while (run_connections) {
 	  // Accept the data packet from client and verification
-	  connfd = accept(sockfd, (SA*)&cli, (socklen_t *restrict) &len);
+	  connfd = accept(sockfd, (sockaddr_t*)&cli, (socklen_t *restrict) &len);
 	  file_err = errno;
 	  if ((connfd < 0) && (file_err != EAGAIN)) {
 	      syslog(LOG_ERR, "server accept failed...\n");
@@ -440,14 +460,19 @@ int main(int argc, char *argv[])
 	       //wait for all outstanding connections to be finished;
        }
 
+    }//(pid == 0)
+
 prog_cleanup:
+#ifndef USE_AESD_CHAR_DEVICE
        //remove the file
        if (remove("/var/tmp/aesdsocketdata") != 0) {
 	   syslog(LOG_ERR, "Failed to delete the /var/tmp/aesdsocketdata file");
        }
-    } // (pid == 0)
+#endif
 
     //close socked and /var/tmp/aesd file fds
+#ifndef  USE_AESD_CHAR_DEVICE
     close(fd);
+#endif
     close(sockfd);
 }

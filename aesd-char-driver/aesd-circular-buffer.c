@@ -10,13 +10,16 @@
 
 #ifdef __KERNEL__
 #include <linux/string.h>
+#include <linux/slab.h>
+#include "aesdchar.h"
 #else
 #include <string.h>
+#include <stdio.h>
+#include <stdlib.h>
+#define PDEBUG(fmt, args...)
 #endif
 
-#include <stdio.h>
 #include "aesd-circular-buffer.h"
-
 
 /*
  * @brief Private function used only by this .c file.
@@ -57,7 +60,7 @@ struct aesd_buffer_entry *aesd_circular_buffer_find_entry_offset_for_fpos(struct
     if (buffer != NULL) {
 	// read and write pointers are same but full flag is not set (empty condition)
 	if ((buffer->in_offs == buffer->out_offs) && (buffer->full == 0)) {
-	    fprintf(stderr, "I shouldn't be coming here. IN:%d OUT:%d FULL:%d\n\r", buffer->in_offs, buffer->out_offs, buffer->full);
+	    PDEBUG("I shouldn't be coming here. IN:%d OUT:%d FULL:%d\n\r", buffer->in_offs, buffer->out_offs, buffer->full);
             return NULL;
 	}
 
@@ -95,30 +98,33 @@ struct aesd_buffer_entry *aesd_circular_buffer_find_entry_offset_for_fpos(struct
 * Any necessary locking must be handled by the caller
 * Any memory referenced in @param add_entry must be allocated by and/or must have a lifetime managed by the caller.
 */
-void aesd_circular_buffer_add_entry(struct aesd_circular_buffer *buffer, const struct aesd_buffer_entry *add_entry)
+char *aesd_circular_buffer_add_entry(struct aesd_circular_buffer *buffer, const struct aesd_buffer_entry *add_entry)
 {
+    char *remove_buffptr = NULL;
     int next_in_index;
 
     if (buffer != NULL) {
 	//get the next write entry index
 	next_in_index = nextPtr(buffer->in_offs);
 
-	buffer->entry[buffer->in_offs] = *add_entry;
+	PDEBUG("writing %s in %d offsetn\n\r", add_entry->buffptr, buffer->in_offs);
 
-	fprintf(stderr, "written %s in %d offsetn\n\r", buffer->entry[buffer->in_offs].buffptr, buffer->in_offs);
-
-    	if (buffer->full) {//if full increment read pointer aswell
+    	if (buffer->full) {//if full, overwrite the buffer and return the ptr of entry that is overwritten 
+	     remove_buffptr = (char *)buffer->entry[buffer->out_offs].buffptr;
 	     buffer->out_offs = next_in_index;
     	} else if (next_in_index == buffer->out_offs) {
 	     buffer->full = 1;
     	}
 
-	//TODO: Debug print
-	fprintf(stderr, "CUR_WR_PTR:%d NEXT_WR_PTR=%d CUR_RD_PTR=%d FULL=%d\n\r", buffer->in_offs, next_in_index, buffer->out_offs, buffer->full);
+	//write the entry
+        buffer->entry[buffer->in_offs] = *add_entry;
 
+	PDEBUG("CUR_WR_PTR:%d NEXT_WR_PTR=%d CUR_RD_PTR=%d FULL=%d\n\r", buffer->in_offs, next_in_index, buffer->out_offs, buffer->full);
 
 	buffer->in_offs = next_in_index;
-    }
+    } 
+
+    return remove_buffptr;
 }
 
 /**
@@ -127,4 +133,44 @@ void aesd_circular_buffer_add_entry(struct aesd_circular_buffer *buffer, const s
 void aesd_circular_buffer_init(struct aesd_circular_buffer *buffer)
 {
     memset(buffer,0,sizeof(struct aesd_circular_buffer));
+}
+
+
+/*
+ * Function to cleanup the circular buffers. Calling function has to take care of
+ * locks.
+ *
+ */
+void cleanup_circulat_buffers(struct aesd_circular_buffer *buffer)
+{
+
+   struct aesd_buffer_entry *entry = NULL;
+   int    next_out_index = 0;
+
+   if (buffer != NULL) {
+	// read and write pointers are same but full flag is not set (empty condition)
+	if ((buffer->in_offs == buffer->out_offs) && (buffer->full == 0)) {
+		//empty condition:do nothing
+	} else {
+
+	   entry = &buffer->entry[buffer->out_offs];
+	   next_out_index = nextPtr(buffer->out_offs);
+	
+	   // iterate over entries until char pos is found
+	   while (entry) {
+#ifdef __KERNEL__
+	       kfree(entry->buffptr);
+#else
+	       free((void *)entry->buffptr);
+#endif
+		   //read and write pointers are same-end of buffers
+                   if (next_out_index == buffer->in_offs) {
+		       break;
+		   }
+		   entry = &buffer->entry[next_out_index];
+                   next_out_index = nextPtr(next_out_index);
+	   }
+       }
+   }
+ 
 }
