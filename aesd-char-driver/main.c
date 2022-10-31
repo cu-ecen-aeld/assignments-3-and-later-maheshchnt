@@ -69,9 +69,8 @@ ssize_t aesd_read(struct file *filp, char __user *buf, size_t count,
 
     rd_entry = aesd_circular_buffer_find_entry_offset_for_fpos(&dev->buffer, *f_pos, &relative_pos);
 
-    mutex_unlock(&dev->buf_lock);
-
     if (rd_entry == NULL) {
+	mutex_unlock(&dev->buf_lock);
 	PDEBUG("aesd_read: No data to send\r\n");
 	return retval; //zero
     }
@@ -84,6 +83,8 @@ ssize_t aesd_read(struct file *filp, char __user *buf, size_t count,
 	PDEBUG("aesd_read: failed to copy to user\r\n");
         //TODO: return value?
     }
+
+    mutex_unlock(&dev->buf_lock);
 
     /**
      * TODO: handle read
@@ -184,6 +185,12 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
     partial_data = is_data_partial(buffptr, count);
     if (partial_data == 0) {
 
+	//take lock before writting the data into circular buffer/accessing the part_mem_ptr
+	if (mutex_lock_interruptible(&dev->buf_lock)) {
+	    kfree(buffptr);
+            return 0;//-ERESTARTSYS;
+	}
+
 	// if there is data in partial buffer, handle that data
 	if (dev->part_mem_ptr != NULL) {
             buffptr = handle_partial_data(dev->part_mem_ptr, 
@@ -199,12 +206,6 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
 	wr_entry.buffptr = buffptr;
 	wr_entry.size = (total_buf_size != 0) ? total_buf_size:count;//handle partial data if any
 	
-	//take lock before writting the data into circular buffer
-	if (mutex_lock_interruptible(&dev->buf_lock)) {
-	    kfree(buffptr);
-            return 0;//-ERESTARTSYS;
-	}
-
 	rm_buffptr = aesd_circular_buffer_add_entry(&dev->buffer, &wr_entry);
 	mutex_unlock(&dev->buf_lock);
 
@@ -214,10 +215,18 @@ ssize_t aesd_write(struct file *filp, const char __user *buf, size_t count,
 
 	retval = count;
     } else { //partial data
+
+    	//take lock before accessing the part_mem_ptr
+	if (mutex_lock_interruptible(&dev->buf_lock)) {
+    	   return 0;//-ERESTARTSYS;
+	}
+
 	dev->part_mem_ptr = handle_partial_data(dev->part_mem_ptr,           
                  dev->part_buf_size, buffptr, (dev->part_buf_size+count));
 	PDEBUG(" aesd_write: CURR BUFF contains %s\r\n", dev->part_mem_ptr);
 	dev->part_buf_size += count;
+	mutex_unlock(&dev->buf_lock);
+
 	retval = count;
     }
 
