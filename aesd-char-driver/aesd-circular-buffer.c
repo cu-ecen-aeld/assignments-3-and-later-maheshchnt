@@ -179,6 +179,7 @@ void cleanup_circulat_buffers(struct aesd_circular_buffer *buffer)
  
 }
 
+#ifdef __KERNEL__
 int aesd_adjust_file_offset(struct aesd_circular_buffer *buffer, struct file *filp, unsigned int write_cmd, unsigned int write_cmd_offset)
 {
     loff_t  fpos = 0;
@@ -223,3 +224,5 @@ int aesd_adjust_file_offset(struct aesd_circular_buffer *buffer, struct file *fi
 
     return -EINVAL;
 }
+
+#endif
