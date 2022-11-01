@@ -49,6 +49,11 @@ struct aesd_circular_buffer
      * set to true when the buffer entry structure is full
      */
     bool full;
+
+    /**
+     * size of circular buffer
+     */
+    uint32_t cb_size;
 };
 
 extern struct aesd_buffer_entry *aesd_circular_buffer_find_entry_offset_for_fpos(struct aesd_circular_buffer *buffer,
@@ -59,6 +64,8 @@ char *aesd_circular_buffer_add_entry(struct aesd_circular_buffer *buffer, const 
 extern void aesd_circular_buffer_init(struct aesd_circular_buffer *buffer);
 
 extern void cleanup_circulat_buffers(struct aesd_circular_buffer *buffer);
+
+extern int aesd_adjust_file_offset(struct aesd_circular_buffer *buffer, struct file *filp, unsigned int write_cmd, unsigned int write_cmd_offset);
 /**
  * Create a for loop to iterate over each member of the circular buffer.
  * Useful when you've allocated memory for circular buffer entries and need to free it
