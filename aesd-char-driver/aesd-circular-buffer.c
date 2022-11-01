@@ -199,12 +199,12 @@ int aesd_adjust_file_offset(struct aesd_circular_buffer *buffer, struct file *fi
     // iterate over entries until char pos is found
     while (entry) {
        if (cmd_num == write_cmd) { //command matched. Check the size of the cmd and adjust the fpos
-	  if (entry->size <= write_cmd_offset) { 
+	  if (entry->size >= write_cmd_offset) { 
 	      fpos += write_cmd_offset;
 	      filp->f_pos = fpos;
 	      return 0;
 	  } else { //offset requested for the command is too large
-	      PDEBUG(" ERROR: aesd_adjust_file_offset: Offset%d requested for the %d:command is too large\n\r", write_cmd_offset, write_cmd);
+	      PDEBUG(" ERROR: aesd_adjust_file_offset: Offset:%d requested for the %d:command is too large\n\r", write_cmd_offset, write_cmd);
 	      return -EINVAL;
 	  }
        } else {
