@@ -18,6 +18,7 @@
 #include <sys/time.h>
 #include <time.h>
 #include "queue.h"
+#include "aesd_ioctl.h"
 
 //When set, char driver is used
 #define USE_AESD_CHAR_DEVICE (1)
@@ -41,6 +42,7 @@ typedef struct client_queue {
 	int        task_finished;    //flag to indicate client thread is done
 	pthread_t  threadId;
         int 	   fd; //file descriptor
+	char       write_back_pkt[MAX_BUF_SIZE];
 	TAILQ_ENTRY(client_queue) ent;
 } client_queue_t;
 
@@ -137,13 +139,12 @@ int check_for_finished_client_threads()
 #ifndef USE_AESD_CHAR_DEVICE
 int fd = -1;//file descriptor
 #endif
-char write_back_pkt[MAX_BUF_SIZE];
 
 /*
  *  1. Write the contents into the file
  *  2. Send all the file contents back to client
  */
-int process_packet(int connfd, int len, char *buff, int fd)
+int process_packet(int connfd, int len, char *buff, int fd, char *write_back_pkt)
 {
    int file_err = -1;
    int write_bytes = 0;
@@ -191,6 +192,40 @@ int process_packet(int connfd, int len, char *buff, int fd)
    return 0;
 }
 
+char ioctl_cmd[] = "AESDCHAR_IOCSEEKTO:";
+
+void seek_and_read(char *buf, int fd, int connfd, char *write_back_pkt)
+{
+	char *arg1, *arg2, *arg3;
+	char tok_delim[]=":,\n";
+	struct aesd_seekto seekto;
+        int read_bytes = 0;
+
+
+	//3 arguments are expected
+	arg1 = strtok(buf, tok_delim);
+	arg2 = strtok(NULL, tok_delim);
+        arg3 = strtok(NULL, tok_delim);
+
+	if ((arg1 != NULL) && (arg2 != NULL) && (arg3 != NULL)) {
+	      seekto.write_cmd = atoi(arg2);
+	      seekto.write_cmd_offset = atoi(arg3);
+	      if (ioctl(fd, AESDCHAR_IOCSEEKTO, &seekto) != 0) {
+		  syslog(LOG_ERR, "\r\n Failed to SEEK char driver via ioctl");
+	      } else {
+		  while ((read_bytes = read(fd, write_back_pkt, MAX_BUF_SIZE))) {
+      		     //syslog(LOG_ERR, "send the %s back to client. len:%d", write_back_pkt, read_bytes);
+      		     if (write(connfd, write_back_pkt, read_bytes) != read_bytes) {
+          	  	 syslog(LOG_ERR, "Failed to send pkts back to client");
+			 break;
+      		     }
+   	          }
+	      }
+	} else {
+	    syslog(LOG_ERR, "Invalid AESDCHAR_IOCSEEKTO command");
+	}
+}
+
 // Function designed for chat between client and server.
 void *process_client_connection(void *e)
 {
@@ -219,9 +254,16 @@ void *process_client_connection(void *e)
 	// copy server message into buffer
         for (n = 0; n < MAX_BUF_SIZE; n++) {
             if (buff[len++] == '\n') {
-		if (process_packet(connfd, len, buff, thread_params->fd) != 0) {
-		   syslog(LOG_ERR, "Failed to process packet that is of %d len", len);
-		   goto cleanup;
+		int cmd_size = sizeof(ioctl_cmd);
+		    //TODO: check for the AESDCHAR_IOCSEEKTO:X,Y command and call ioctl function
+		if (strncmp (buff, ioctl_cmd, cmd_size-1/*19*/) == 0) {
+		    syslog(LOG_INFO, "FOUND AESDCHAR_IOSEEKTO COMMAND");//print offsets
+		    seek_and_read(buff, thread_params->fd, connfd, thread_params->write_back_pkt);
+		} else {
+		   if (process_packet(connfd, len, buff, thread_params->fd, thread_params->write_back_pkt) != 0) {
+		      syslog(LOG_ERR, "Failed to process packet that is of %d len", len);
+		      goto cleanup;
+		   }
 		}
 	    }
 	}
